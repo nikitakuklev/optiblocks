@@ -1,0 +1,4 @@
+pyqt5
+pyqtgraph
+pytest
+pytest-qt
