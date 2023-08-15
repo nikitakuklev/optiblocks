@@ -105,20 +105,6 @@ class ModelGroupParameter(PydanticGroupParameter):
         logger.debug(f'Making Item for ModelGroupParameter {self.typehint=}')
         return PydanticGroupParameterItem(self, depth, self.value, self.desc, self.typehint)
 
-    # def handle_change(self, param, change, data):
-    #     logger.debug(f'Model group ({self}) received change data {data}')
-    #     changes = {param.field.name: data}
-    #     try:
-    #         old_data = self.basemodel.dict()
-    #         updated_dict = deep_update(old_data, changes)
-    #         check_and_set_options(self.basemodel, updated_dict)
-    #         # validation did not raise exceptions, proceed
-    #         setattr(self.basemodel, param.field.name, data)
-    #         logger.debug(f'Set {self.basemodel=} OK')
-    #     except:
-    #         logger.debug(f'Set {self.basemodel=} with {changes=} FAIL')
-    #         logger.debug()
-
     def handle_change_fun(self, param, child, fun):
         assert isinstance(child, (FieldParameter, PydanticGroupParameter))
         logger.debug(f'Model group ({self}) received change function {fun} from {child.name()}')
@@ -140,6 +126,11 @@ class ModelGroupParameter(PydanticGroupParameter):
         except Exception as ex:
             logger.debug(f'Set FAIL')
             raise ex
+
+    def get_model_value(self, child):
+        field_name = child.name()
+        field_value = getattr(self.basemodel, field_name)
+        return field_value
 
     def propose_change(self, param, child, fun):
         assert isinstance(child, (FieldParameter, PydanticGroupParameter))
@@ -243,56 +234,37 @@ class FieldParameter(Parameter):
 
 
 class RegularPydanticGroupParameter(PydanticGroupParameter):
-    pass
-
-
-class ListFieldParameter(RegularPydanticGroupParameter):
-    def handle_change(self, param, change, data):
-        if param not in self.children():
-            raise Exception
-        idx = self.children().index(param)
-        logger.debug(f'List field parameter ({self.name()}) creating change fun for '
-                     f'({param.name()}) at index ({idx}), fwd to ({self.parent()})')
-        self.field[idx] = data
-
-    def handle_change_fun(self, param, child, fun):
-        logger.debug(f'List field ({self.name()}) forwarding proxy from ({child.name()})')
-        # key = param.name()
-        # model = self.parent().basemodel
-        # field_value = getattr(self.basemodel, key)
-        # new_value = copy.deepcopy(field_value)
-        # model[key] = fun(model[key])
-        idx = self.children().index(child)
-
-        def change_fun(x):
-            x[idx] = fun(x[idx])
-            return x
-
-        self.parent().handle_change_fun(param, self, change_fun)
-
-    def propose_change(self, param, child, fun):
-        logger.debug(f'List field parameter ({self.name()}) forwarding proxy from ({child.name()})')
-        idx = self.children().index(child)
-
-        def change_fun(x):
-            x[idx] = fun(x[idx])
-            return x
-
-        self.parent().propose_change(param, self, change_fun)
-
-    def get_change_fun(self, child, data):
-        idx = self.children().index(child)
-
-        def change_fun(x):
-            x[idx] = data
-
-        return change_fun
-
     def find_change_handler(self):
-        return self.parent().find_change_handler()
+        return self
 
     def find_validator(self):
         return self.parent().find_validator()
+
+
+class ListFieldParameter(RegularPydanticGroupParameter):
+    def handle_change(self, param, child, fun):
+        assert child in self.children()
+        logger.debug(f'({self.name()}) handling change ({child.name()})')
+        idx = self.children().index(child)
+        obj = self.parent().get_model_value(self)
+        obj[idx] = fun(obj[idx])
+
+    def get_model_value(self, child):
+        idx = self.children().index(child)
+        obj = self.parent().get_model_value(self)
+        return obj[idx]
+
+    def propose_change(self, param, child, fun):
+        logger.debug(f'List parameter ({self.name()}) fwd from ({child.name()})')
+        idx = self.children().index(child)
+
+        def change_fun(x, do_copy):
+            if do_copy:
+                x = copy.copy(x)
+            x[idx] = fun(x[idx])
+            return x
+
+        return self.parent().propose_change(param, self, change_fun)
 
 
 class DictFieldParameter(PydanticGroupParameter):
@@ -322,6 +294,13 @@ class DictFieldParameter(PydanticGroupParameter):
 
         self.parent().handle_change_fun(param, self, change_fun)
 
+    def get_model_value(self, child):
+        obj = self.parent().get_model_value(self)
+        keys = list(obj.keys())
+        idx = self.children().index(child)
+        key = keys[idx]
+        return obj[key]
+
     def propose_change(self, param, child, fun):
         logger.debug(f'Dict field ({self.name()}) forwarding proxy from ({child.name()})')
         key = param.name()
@@ -339,12 +318,6 @@ class DictFieldParameter(PydanticGroupParameter):
             x[key] = data
 
         return change_fun
-
-    def find_change_handler(self):
-        return self
-
-    def find_validator(self):
-        return self.parent().find_validator()
 
 
 class FloatFieldParameter(FieldParameter):
@@ -394,6 +367,69 @@ class StringFieldParameter(FieldParameter):
 
 
 ##############
+class RegularGroupParameter(PydanticGroupParameter):
+    def __init__(self, **opts):
+        super().__init__(**opts)
+        self.desc = opts.get('desc', "")
+
+    def find_change_handler(self):
+        return self
+
+    def find_validator(self):
+        return self.parent().find_validator()
+
+
+class ListParameter(RegularGroupParameter):
+    def handle_change(self, param, child, fun):
+        assert child in self.children()
+        logger.debug(f'({self.name()}) fwd proxy from ({child.name()})')
+        idx = self.children().index(child)
+        obj = self.parent().get_model_value(self)
+        obj[idx] = fun(obj[idx])
+
+    def get_model_value(self, child):
+        obj = self.parent().get_model_value()
+        idx = self.children().index(child)
+        return obj[idx]
+
+    def propose_change(self, param, child, fun):
+        logger.debug(f'List parameter ({self.name()}) fwd from ({child.name()})')
+        idx = self.children().index(child)
+
+        def change_fun(x, do_copy):
+            if do_copy:
+                x = copy.copy(x)
+            x[idx] = fun(x[idx])
+            return x
+
+        return self.parent().propose_change(param, self, change_fun)
+
+
+class DictParameter(RegularGroupParameter):
+    def handle_change(self, param, child, fun):
+        assert child in self.children()
+        logger.debug(f'Dict ({self.name()}) fwd proxy from ({child.name()})')
+        key = param.name()
+        obj = self.parent().get_model_value(self)
+        obj[key] = fun(obj[key])
+
+    def get_model_value(self, child):
+        obj = self.parent().get_model_value()
+        key = child.name()
+        return obj[key]
+
+    def propose_change(self, param, child, fun):
+        assert child in self.children()
+        logger.debug(f'Dict ({self.name()}) fwd proxy from ({child.name()})')
+        key = param.name()
+
+        def change_fun(x, do_copy):
+            if do_copy:
+                x = copy.copy(x)
+            x[key] = fun(x[key])
+            return x
+
+        return self.parent().propose_change(param, self, change_fun)
 
 
 class PrimitiveParameter(Parameter):
@@ -410,9 +446,9 @@ class PrimitiveParameter(Parameter):
         def change_fun(x):
             return data
 
-        self.parent().handle_change_fun(self, self, change_fun)
+        self.parent().handle_change(self, self, change_fun)
 
-    def propose_self_change(self, data):
+    def propose_self_change(self, data, dry_run=False):
         logger.debug(f'Primitive ({self.name()}) self-change {data}')
 
         def change_fun(x):
@@ -420,108 +456,32 @@ class PrimitiveParameter(Parameter):
 
         self.parent().propose_change(self, self, change_fun)
 
+    def _interpretValue(self, v):
+        interpreter = getattr(builtins, self.t)
+        return interpreter(v)
+
     def propose_change(self, param, change, data):
         raise Exception
 
 
-class ListParameter(PydanticGroupParameter):
-    def __init__(self, **opts):
-        super().__init__(**opts)
-        self.desc = opts.get('desc', "")
-
-    # def handle_change(self, param, change, data):
-    #     logger.debug(f'List parameter ({self.name()}) creating change fun for ({param.name()})')
-    #     if param not in self.children():
-    #         raise Exception
-    #     idx = self.children().index(param)
-    #
-    #     def change_fun(x):
-    #         x[idx] = data
-    #
-    #     self.parent().handle_change(param, self, change_fun)
-    def propose_change(self, param, child, fun):
-        logger.debug(f'List parameter ({self.name()}) fwd from ({child.name()})')
-        idx = self.children().index(child)
-
-        def change_fun(x):
-            x[idx] = fun(x[idx])
-            return x
-
-        self.parent().propose_change(param, self, change_fun)
-
-    def handle_change_fun(self, param, child, fun):
-        logger.debug(f'List parameter ({self.name()}) forwarding proxy from ({child.name()})')
-        idx = self.children().index(child)
-
-        def change_fun(x):
-            x[idx] = fun(x[idx])
-            return x
-
-        self.parent().handle_change_fun(param, self, change_fun)
-
-    def find_change_handler(self):
-        return self
-
-
-class DictParameter(PydanticGroupParameter):
-    def handle_change(self, param, change, data):
-        if param not in self.children():
-            raise Exception
-        key = param.name()
-        logger.debug(f'Dict parameter ({self.name()}) creating change fun for '
-                     f'({param.name()}) at key ({key}), fwd to ({self.parent()})')
-
-        self.field[key] = data
-
-    def propose_change(self, param, child, fun):
-        logger.debug(f'Dict ({self.name()}) fwd proxy from ({child.name()})')
-        key = param.name()
-
-        def change_fun(x):
-            return fun(x[key])
-
-        return self.parent().propose_change(param, self, change_fun)
-
-    def get_change_fun(self, child, data):
-        assert child in self.children()
-        key = child.name()
-
-        def change_fun(x):
-            x[key] = data
-
-        return change_fun
-
-    def find_change_handler(self):
-        return self
-
-    def find_validator(self):
-        return self.parent().find_validator()
-
-
 class FloatParameter(PrimitiveParameter):
+    t = 'float'
+
     def __init__(self, **opts):
         super().__init__(**opts, type='float')
 
     def makeTreeItem(self, depth):
         return NumericParameterItem(self, depth, self.desc, self.typehint)
 
-    def _interpretValue(self, v):
-        return float(v)
-
-    def handle_change(self, param, change, data):
-        logger.debug(f'Float parameter {self.name()} passing {change} {data}')
-        self.parent().handle_change(param, change, data)
-
 
 class StringParameter(PrimitiveParameter):
+    t = 'str'
+
     def __init__(self, **opts):
         super().__init__(**opts)
 
     def makeTreeItem(self, depth):
         return StringParameterItem(self, depth, self.desc, self.typehint)
-
-    def _interpretValue(self, v):
-        return str(v)
 
 
 #########################
@@ -590,7 +550,32 @@ class BooleanHandler(FieldHandler):
 
 
 class IntHandler(FloatHandler):
-    pass
+    def process(self, field, value, parent):
+        name = field.alias or field.name
+        desc = field.field_info.description
+        title = f'{name}'
+        an = field.annotation
+
+        lb = '>= -inf'
+        ub = '<= +inf'
+        if isinstance(an, ConstrainedNumberMeta):
+            if an.ge is not None:
+                lb = f'>= {an.ge}'
+            elif an.gt is not None:
+                lb = f'>= {an.gt}'
+
+            if an.le is not None:
+                ub = f'<= {an.le}'
+            elif an.lt is not None:
+                ub = f'< {an.lt}'
+
+        bounds = f'[{lb},{ub}]'
+        # (allowed: {field.annotation})
+        typehint = f'Field[{type(value).__name__}] {bounds}'
+        logger.debug(f'IntegerHandler {name=} {value=} {title=} {typehint=}')
+        return IntegerFieldParameter(name=name, field=field, parent=parent,
+                                     value=value, title=title,
+                                     desc=desc, typehint=typehint)
 
 
 class PrimitiveHandler(ABC):
