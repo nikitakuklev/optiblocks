@@ -32,12 +32,12 @@ The structure of parameters is:
 
 ```mermaid
 graph PYMODEL;
-    Model--><int,float,str,bool>Field;
+    Model-->Field;
     Model-->ListField;
     Model-->DictField;
     Model-->SubModel;
-    ListField--><int,float,str,bool>PrimitiveFields;
-    ListField--><list,dict>PrimitiveFields;
-    DictField--><int,float,str,bool>PrimitiveFields;
-    DictField--><list,dict>PrimitiveFields;
+    ListField-->PrimitiveFields;
+    ListField-->PrimitiveFields;
+    DictField-->PrimitiveFields;
+    DictField-->PrimitiveFields;
 ```
