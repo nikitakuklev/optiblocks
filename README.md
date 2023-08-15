@@ -31,13 +31,13 @@ BaseModel, primitive types, dict, and list.
 The structure of parameters is:
 
 ```mermaid
-graph PYMODEL;
-    Model-->Field;
-    Model-->ListField;
-    Model-->DictField;
-    Model-->SubModel;
-    ListField-->PrimitiveFields;
-    ListField-->PrimitiveFields;
-    DictField-->PrimitiveFields;
-    DictField-->PrimitiveFields;
+graph
+    Model --> Field;
+    Model --> ListField;
+    Model --> DictField;
+    Model --> SubModel;
+    ListField --> PrimitiveFields;
+    ListField --> PrimitiveContainerFields;
+    DictField --> PrimitiveField2;
+    DictField --> PrimitiveContainerFields2;
 ```
