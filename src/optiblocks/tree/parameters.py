@@ -183,14 +183,14 @@ class FieldParameter(Parameter):
     def makeTreeItem(self, depth):
         pass
 
-    def handle_change(self, param, change, data):
-        logger.debug(f'Parameter ({self.name()}) received change ({data}), fwd to'
-                     f' ({self.parent()})')
-
-        def change_fun(x):
-            return data
-
-        self.parent().handle_change_fun(param, self, change_fun)
+    # def handle_change(self, param, change, data):
+    #     logger.debug(f'Parameter ({self.name()}) received change ({data}), fwd to'
+    #                  f' ({self.parent()})')
+    #
+    #     def change_fun(x):
+    #         return data
+    #
+    #     self.parent().handle_change_fun(param, self, change_fun)
 
     def handle_self_change(self, data):
         logger.debug(f'Field parameter ({self.name()}) received ({data}), fwd to'
@@ -463,6 +463,13 @@ class PrimitiveParameter(Parameter):
     def propose_change(self, param, change, data):
         raise Exception
 
+
+
+    def find_change_handler(self):
+        return self.parent().find_change_handler()
+
+    def find_validator(self):
+        return self.parent().find_validator()
 
 class FloatParameter(PrimitiveParameter):
     t = 'float'

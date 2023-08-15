@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QWidget
 from pydantic import ValidationError
 
 from optiblocks.tree.parameters import FloatFieldParameter, FloatParameter, IntegerFieldParameter, \
-    ModelGroupParameter
+    ListFieldParameter, ModelGroupParameter
 from optiblocks.tree.tree import ModelContainer
 from sample_model import AC, make_dummy_model
 from tree_test_gui import make_window
@@ -67,6 +67,30 @@ def test_model_write(qtbot, model):
     pi = pitems[0]
     pi.widget.lineEdit().setText(str(420.0))
     assert model.cars[0].price == car_price_1.opts['value'] == 420
+
+
+def test_list_field(qtbot, model):
+    win = QWidget()
+    stree = ModelContainer(win)
+    stree.set_model(model)
+    win.show()
+    qtbot.addWidget(win)
+
+    rp = stree.rp
+    root = rp.children()[0]
+
+    car1 = root.child(*['cars', 'cars[0]'])
+    keycodes = root.child(*['cars', 'cars[0]', 'keycodes'])
+    keycodes1 = root.child(*['cars', 'cars[0]', 'keycodes', 'keycodes[0]'])
+
+    assert isinstance(keycodes, ListFieldParameter)
+    assert isinstance(keycodes1, FloatParameter)
+
+    v1 = keycodes1.find_validator()
+    assert v1 == car1
+
+    c1 = keycodes1.find_change_handler()
+    assert c1 == car1
 
 
 def test_tree_read(qtbot, model):

@@ -282,7 +282,7 @@ class ModelContainer:
             param = self.dispatch(v, root_name=f'{root_name}[{k}]')
             children.append(param)
         grp = DictFieldParameter(name=root_name, field=field, children=children,
-                                 typehint='<dict>', desc=field.field_info.description)
+                                 typehint='Field[<dict>]', desc=field.field_info.description)
         grp.setOpts(expanded=True)
         return grp
 
@@ -305,7 +305,7 @@ class ModelContainer:
             param = self.dispatch(value, root_name=f'{root_name}[{i}]')
             children.append(param)
         grp = ListFieldParameter(name=root_name, field=field, type='group', children=children,
-                                 typehint='<list>', desc=field.field_info.description)
+                                 typehint='Field[<list>]', desc=field.field_info.description)
         grp.setOpts(expanded=True)
         dbg(f'Made group for list {field.name=}')
         return grp

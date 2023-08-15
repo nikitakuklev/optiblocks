@@ -32,12 +32,12 @@ The structure of parameters is:
 
 ```mermaid
 graph
-    Model --> Field;
+    Model --> PrimitiveField;
     Model --> ListField;
     Model --> DictField;
     Model --> SubModel;
-    ListField --> PrimitiveFields;
-    ListField --> PrimitiveContainerFields;
-    DictField --> PrimitiveField2;
-    DictField --> PrimitiveContainerFields2;
+    ListField --> PrimitiveParameter;
+    ListField --> PrimitiveContainer;
+    DictField --> PrimitiveParameter2;
+    DictField --> PrimitiveContainer2;
 ```
