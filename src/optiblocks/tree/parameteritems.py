@@ -1,5 +1,6 @@
 import builtins
 import logging
+import time
 
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QTimer, Qt
@@ -129,21 +130,51 @@ class PydanticParameterItem(WidgetParameterItem):
             desc = '<not available>'
 
         # desktop = QApplication.desktop()
+        #self.lb_wrap = wrap = QWidget(self.widget)
+        #l = QVBoxLayout()
+        #wrap.setLayout(l)
         desktop = QApplication.instance().desktop()
         pos = QCursor.pos()
         screen_num = desktop.screenNumber(pos)
         screen_rect = desktop.screenGeometry(screen_num)
         logger.debug(f'Showing tooltip at {screen_num=} {screen_rect=} {pos=}')
-        lb = QLabel()
+        self.tip_lb = lb = QLabel()
+        #l.addWidget(lb)
         lb.setWindowFlags(QtCore.Qt.ToolTip)
-        lb.setText(desc)
+
+        t1 = time.perf_counter()
+        def get_text():
+            dt = (time.perf_counter()-t1)
+            #print(f'Get text {dt}')
+            text = f"""
+                    <p style="background-color:tomato;">
+                    <font color=red>Tip info:</font> {desc}
+                    (shown for {dt:.2f}/5 s)
+                    </p>
+            """
+            return text
+
+        def update():
+            self.tip_lb.setText(get_text())
+            #lb.update()
+
+        update()
         pos.setY(pos.y() - 20)
         lb.move(pos)
+        #wrap.move(pos)
         lb.show()
-        t = QTimer()
-        t.timeout.connect(lb.hide)
-        t.start(50000)
-        # QtCore.QTimer.singleShot(t)
+        #wrap.show()
+
+        self.label_t = t = QTimer()
+        def stop():
+            t.stop()
+            lb.hide()
+            #wrap.hide()
+
+        t.timeout.connect(update)
+        t.start(50)
+
+        QTimer.singleShot(5000, stop)
 
         # msgBox = QMessageBox()
         # msgBox.setIcon(QMessageBox.Information)
