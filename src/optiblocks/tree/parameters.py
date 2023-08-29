@@ -2,6 +2,7 @@ import builtins
 import copy
 import logging
 from abc import ABC, abstractmethod
+from typing import Type
 
 import pyqtgraph.Qt
 from PyQt5 import QtCore
@@ -56,31 +57,51 @@ class PydanticGroupParameter(Parameter):
         return PydanticGroupParameterItem(self, depth, self.value, self.desc, self.typehint)
 
 
-def check_and_set_options(model: BaseModel, new_dict: dict):
+def validate_pydantic_model(modelt: Type[BaseModel], new_dict: dict):
     """
-    Validates a dictionary against the model, and if so, sets new values
+    Validates a dictionary against the model class
+    See https://github.com/pydantic/pydantic/issues/1864
+
     Parameters
     ----------
     model: BaseModel
         The object to change
     new_dict: dict
         Dictionary of options
-    See https://github.com/pydantic/pydantic/issues/1864
     """
 
     values, fields_set, validation_error = validate_model(
-            model.__class__, new_dict
+            modelt, new_dict
     )
     if validation_error:
         raise validation_error
-    try:
-        object.__setattr__(model, "__dict__", values)
-    except TypeError as e:
-        raise TypeError(
-                "Model values must be a dict; you may not have returned "
-                + "a dictionary from a root validator"
-        ) from e
-    object.__setattr__(model, "__fields_set__", fields_set)
+
+
+# def check_and_set_options(model: Type[BaseModel], new_dict: dict):
+#     """
+#     Validates a dictionary against the model, and if so, sets new values
+#     Parameters
+#     ----------
+#     model: BaseModel
+#         The object to change
+#     new_dict: dict
+#         Dictionary of options
+#     See https://github.com/pydantic/pydantic/issues/1864
+#     """
+#
+#     values, fields_set, validation_error = validate_model(
+#             model.__class__, new_dict
+#     )
+#     if validation_error:
+#         raise validation_error
+#     try:
+#         object.__setattr__(model, "__dict__", values)
+#     except TypeError as e:
+#         raise TypeError(
+#                 "Model values must be a dict; you may not have returned "
+#                 + "a dictionary from a root validator"
+#         ) from e
+#     object.__setattr__(model, "__fields_set__", fields_set)
 
 
 class ModelGroupParameter(PydanticGroupParameter):
@@ -98,29 +119,29 @@ class ModelGroupParameter(PydanticGroupParameter):
         logger.debug(f'Made ModelGroupParameter {self.typehint=}')
 
     def __str__(self):
-        return (f'{self.__class__.__name__} for model {self.basemodel.__class__} with {self.desc=}'
-                f' {self.typehint=}')
+        return (f'{self.__class__.__name__} for model ({self.basemodel.__class__.__name__}) with'
+                f' ({self.desc})'
+                f' ({self.typehint})')
 
     def makeTreeItem(self, depth):
         logger.debug(f'Making Item for ModelGroupParameter {self.typehint=}')
         return PydanticGroupParameterItem(self, depth, self.value, self.desc, self.typehint)
 
     def handle_change_fun(self, param, child, fun):
+        """ Apply change to a field in-place """
         assert isinstance(child, (FieldParameter, PydanticGroupParameter))
-        logger.debug(f'Model group ({self}) received change function {fun} from {child.name()}')
+        logger.debug(f'Model group ({self}) change from ({child.name()})')
         try:
             field_name = child.name()
             field_value = getattr(self.basemodel, field_name)
-            new_value = copy.deepcopy(field_value)
-            logger.debug(f'Old value ({new_value})')
-            new_value = fun(new_value)
+            logger.debug(f'Old value ({field_value})')
+            new_value = fun(field_value)
 
             d = self.basemodel.dict()
             d[field_name] = new_value
             logger.debug(f'New value ({new_value})')
-            check_and_set_options(self.basemodel, d)
+            validate_pydantic_model(self.basemodel.__class__, d)
 
-            # We won't actually use the new model to preserve non-field values
             setattr(self.basemodel, field_name, new_value)
             logger.debug(f'Set OK')
         except Exception as ex:
@@ -134,25 +155,25 @@ class ModelGroupParameter(PydanticGroupParameter):
 
     def propose_change(self, param, child, fun):
         assert isinstance(child, (FieldParameter, PydanticGroupParameter))
-        logger.debug(f'Model group ({self}) received change function {fun} from {child.name()}')
+        logger.debug(f'Model group ({self}) proposal from ({child.name()})')
         try:
             field_name = child.name()
             field_value = getattr(self.basemodel, field_name)
             new_value = copy.deepcopy(field_value)
-            new_value = fun(new_value)
+            new_value = fun(new_value, do_copy=True)
 
             d = self.basemodel.dict()
             d[field_name] = new_value
-            check_and_set_options(self.basemodel, d)
+            validate_pydantic_model(self.basemodel.__class__, d)
 
             # We won't actually use the new model to preserve non-field values
-            logger.debug(f'Validation {self.basemodel=} OK')
+            logger.debug(f'Validation OK')
             # TODO: Propagate to parent models
             return True
         except Exception as ex:
-            logger.debug(f'Set FAIL')
+            logger.debug(f'Proposal FAIL')
             logger.debug(f'Exception {ex=}')
-            return ex
+            raise ex
 
     def get_change_fun(self, child, data):
         pass
@@ -179,12 +200,24 @@ class RegularPydanticGroupParameter(PydanticGroupParameter):
 
 
 class ListFieldParameter(RegularPydanticGroupParameter):
-    def handle_change(self, param, child, fun):
-        assert child in self.children()
-        logger.debug(f'({self.name()}) handling change ({child.name()})')
+    # def handle_change(self, param, child, fun):
+    #     assert child in self.children()
+    #     logger.debug(f'({self.name()}) handling change ({child.name()})')
+    #     idx = self.children().index(child)
+    #     obj = self.parent().get_model_value(self)
+    #     obj[idx] = fun(obj[idx])
+
+    def handle_change_fun(self, param, child, fun):
+        logger.debug(f'{self.__class__.__name__} ({self.name()}) change from '
+                     f'({child.name()}), fwd to ({self.parent()})')
+        # obj = self.parent().get_model_value(self)
         idx = self.children().index(child)
-        obj = self.parent().get_model_value(self)
-        obj[idx] = fun(obj[idx])
+
+        def change_fun(x):
+            x[idx] = fun(x[idx])
+            return x
+
+        self.parent().handle_change_fun(param, self, change_fun)
 
     def get_model_value(self, child):
         idx = self.children().index(child)
@@ -192,7 +225,8 @@ class ListFieldParameter(RegularPydanticGroupParameter):
         return obj[idx]
 
     def propose_change(self, param, child, fun):
-        logger.debug(f'List parameter ({self.name()}) fwd from ({child.name()})')
+        logger.debug(f'{self.__class__.__name__} ({self.name()}) proposal from ({child.name()}), '
+                     f'fwd to ({self.parent()})')
         idx = self.children().index(child)
 
         def change_fun(x, do_copy):
@@ -204,15 +238,9 @@ class ListFieldParameter(RegularPydanticGroupParameter):
         return self.parent().propose_change(param, self, change_fun)
 
 
-class DictFieldParameter(PydanticGroupParameter):
-    # def handle_change(self, param, change, data):
-    #     if param not in self.children():
-    #         raise Exception
-    #     key = param.name()
-    #     logger.debug(f'Dict field parameter ({self.name()}) creating change fun for '
-    #                  f'({param.name()}) at key ({key}), fwd to ({self.parent()})')
-    #
-    #     self.field[key] = data
+class DictFieldParameter(RegularPydanticGroupParameter):
+    """ DictField - only handles edits to its key-value pairs """
+
     def handle_change_fun(self, param, child, fun):
         logger.debug(f'Dict field ({self.name()}) forwarding proxy from ({child.name()})')
         # key = param.name()
@@ -261,9 +289,11 @@ class DictFieldParameter(PydanticGroupParameter):
 
 class FieldParameter(Parameter):
     """ Represents a pydantic field parameter that is a lead (will not contain children) """
+    _type = None
 
     def __init__(self, **opts):
-        super().__init__(**opts)
+        assert self._type is not None
+        super().__init__(**opts, type=self._type)
         self.desc = opts.get('desc', "<no field description>")
         self.typehint = opts.get('typehint', '')
         self.field: FieldInfo = opts.get('field', None)
@@ -273,7 +303,7 @@ class FieldParameter(Parameter):
         pass
 
     def handle_self_change(self, data):
-        logger.debug(f'Field parameter ({self.name()}) received ({data}), fwd to'
+        logger.debug(f'Field ({self.name()}) self-change ({data}) fwd to'
                      f' ({self.parent()})')
 
         def change_fun(x):
@@ -285,12 +315,12 @@ class FieldParameter(Parameter):
         raise Exception
 
     def propose_self_change(self, data):
-        logger.debug(f'Field ({self.name()}) self-change {data}')
+        logger.debug(f'Field ({self.name()}) proposed self-change ({data})')
 
         def change_fun(x):
             return data
 
-        self.parent().propose_change(self, self, change_fun)
+        return self.parent().propose_change(self, self, change_fun)
 
     def _interpretValue(self, v):
         typ = self.opts['type'] or 'str'
@@ -314,8 +344,7 @@ class FieldParameter(Parameter):
 
 
 class FloatFieldParameter(FieldParameter):
-    def __init__(self, **opts):
-        super().__init__(**opts, type='float')
+    _type = 'float'
 
     def makeTreeItem(self, depth):
         return NumericParameterItem(self, depth, self.desc, self.typehint)
@@ -330,8 +359,7 @@ class SliderFloatFieldParameter(FloatFieldParameter):
 
 
 class IntegerFieldParameter(FieldParameter):
-    def __init__(self, **opts):
-        super().__init__(**opts, type='int')
+    _type = 'int'
 
     def makeTreeItem(self, depth):
         return NumericParameterItem(self, depth, self.desc, self.typehint)
@@ -341,8 +369,7 @@ class IntegerFieldParameter(FieldParameter):
 
 
 class BooleanFieldParameter(FieldParameter):
-    def __init__(self, **opts):
-        super().__init__(**opts, type='bool')
+    _type = 'bool'
 
     def makeTreeItem(self, depth):
         return BooleanParameterItem(self, depth, self.desc, self.typehint)
@@ -352,8 +379,7 @@ class BooleanFieldParameter(FieldParameter):
 
 
 class StringFieldParameter(FieldParameter):
-    def __init__(self, **opts):
-        super().__init__(**opts, type='str')
+    _type = 'str'
 
     def makeTreeItem(self, depth):
         return SimplePydanticParameterItem(self, depth, self.desc, self.typehint)
@@ -425,36 +451,39 @@ class DictParameter(RegularGroupParameter):
         return self.parent().propose_change(param, self, change_fun)
 
 
+#####################
+
 class PrimitiveParameter(Parameter):
+    _type = None
+
     def __init__(self, **opts):
         assert isinstance(opts['name'], str), f'{opts}'
-        super().__init__(**opts)
+        assert self._type is not None
+        super().__init__(**opts, type=self._type)
         self.desc = opts.get('desc', "")
         self.typehint = opts.get('typehint', '')
 
     def handle_self_change(self, data):
-        logger.debug(f'Primitive parameter ({self.name()}) received ({data}), fwd to'
+        logger.debug(f'{self.__class__.__name__} ({self.name()}) self-change ({data}), fwd to'
                      f' ({self.parent()})')
 
         def change_fun(x):
             return data
 
-        self.parent().handle_change(self, self, change_fun)
+        # self.parent().handle_change(self, self, change_fun)
+        self.parent().handle_change_fun(self, self, change_fun)
 
     def propose_self_change(self, data):
-        logger.debug(f'Primitive ({self.name()}) self-change {data}')
+        logger.debug(f'{self.__class__.__name__} ({self.name()}) proposed self-change {data}')
 
         def change_fun(x):
             return data
 
-        self.parent().propose_change(self, self, change_fun)
+        return self.parent().propose_change(self, self, change_fun)
 
     def _interpretValue(self, v):
-        interpreter = getattr(builtins, self.t)
+        interpreter = getattr(builtins, self._type)
         return interpreter(v)
-
-    def propose_change(self, param, change, data):
-        raise Exception
 
     def find_change_handler(self):
         return self.parent().find_change_handler()
@@ -464,20 +493,14 @@ class PrimitiveParameter(Parameter):
 
 
 class FloatParameter(PrimitiveParameter):
-    t = 'float'
-
-    def __init__(self, **opts):
-        super().__init__(**opts, type='float')
+    _type = 'float'
 
     def makeTreeItem(self, depth):
         return NumericParameterItem(self, depth, self.desc, self.typehint)
 
 
 class StringParameter(PrimitiveParameter):
-    t = 'str'
-
-    def __init__(self, **opts):
-        super().__init__(**opts)
+    _type = 'str'
 
     def makeTreeItem(self, depth):
         return StringParameterItem(self, depth, self.desc, self.typehint)

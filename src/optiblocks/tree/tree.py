@@ -80,8 +80,8 @@ class PydanticTree(ParameterTree):
         self.setStyleSheet(style)
 
     def selectionChanged(self, *args):
-        logger.debug(f'Pydantic tree selection changed to {args=} {self.selectedItems()=}')
         sel = self.selectedItems()
+        logger.debug(f'Tree selection changed to {sel}')
         super().selectionChanged(*args)
         if len(sel) != 1:
             sel = None
@@ -393,8 +393,12 @@ class ModelContainer:
             dbg(f'  New value: {data} {type(data)=}')
             dbg('----------------------------')
 
-            param.propose_self_change(data)
+            result = param.propose_self_change(data)
+            # Will raise exception if validation fails
+            assert result
+            logger.info(f'Change proposal OK')
             param.handle_self_change(data)
+            logger.info(f'Change handling OK')
 
         for f in self.callbacks:
             f(self)
