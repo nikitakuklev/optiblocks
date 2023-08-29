@@ -9,7 +9,6 @@ from PyQt5 import QtCore
 from pydantic import BaseModel, validate_model
 from pydantic.fields import FieldInfo
 from pydantic.types import ConstrainedNumberMeta
-from pydantic.utils import deep_update
 from pyqtgraph.parametertree import Parameter
 
 from .parameteritems import BooleanParameterItem, NumericParameterItem, \
@@ -57,15 +56,15 @@ class PydanticGroupParameter(Parameter):
         return PydanticGroupParameterItem(self, depth, self.value, self.desc, self.typehint)
 
 
-def validate_pydantic_model(modelt: Type[BaseModel], new_dict: dict):
+def validate_pydantic_model(modelt:Type[BaseModel], new_dict: dict):
     """
     Validates a dictionary against the model class
     See https://github.com/pydantic/pydantic/issues/1864
 
     Parameters
     ----------
-    model: BaseModel
-        The object to change
+    modelt: Type
+        Base model class
     new_dict: dict
         Dictionary of options
     """
@@ -75,33 +74,6 @@ def validate_pydantic_model(modelt: Type[BaseModel], new_dict: dict):
     )
     if validation_error:
         raise validation_error
-
-
-# def check_and_set_options(model: Type[BaseModel], new_dict: dict):
-#     """
-#     Validates a dictionary against the model, and if so, sets new values
-#     Parameters
-#     ----------
-#     model: BaseModel
-#         The object to change
-#     new_dict: dict
-#         Dictionary of options
-#     See https://github.com/pydantic/pydantic/issues/1864
-#     """
-#
-#     values, fields_set, validation_error = validate_model(
-#             model.__class__, new_dict
-#     )
-#     if validation_error:
-#         raise validation_error
-#     try:
-#         object.__setattr__(model, "__dict__", values)
-#     except TypeError as e:
-#         raise TypeError(
-#                 "Model values must be a dict; you may not have returned "
-#                 + "a dictionary from a root validator"
-#         ) from e
-#     object.__setattr__(model, "__fields_set__", fields_set)
 
 
 class ModelGroupParameter(PydanticGroupParameter):
@@ -255,7 +227,8 @@ class DictFieldParameter(RegularPydanticGroupParameter):
         def change_fun(x):
             keys = list(x.keys())
             key = keys[idx]
-            return fun(x[key])
+            x[key] = fun(x[key])
+            return x
 
         self.parent().handle_change_fun(param, self, change_fun)
 
@@ -267,11 +240,17 @@ class DictFieldParameter(RegularPydanticGroupParameter):
         return obj[key]
 
     def propose_change(self, param, child, fun):
-        logger.debug(f'Dict field ({self.name()}) forwarding proxy from ({child.name()})')
-        key = param.name()
+        assert child in self.children()
+        logger.debug(f'Dict field ({self.name()}) proposal from ({child.name()})')
+        idx = self.children().index(child)
 
-        def change_fun(x):
-            return fun(x[key])
+        def change_fun(x, do_copy):
+            if do_copy:
+                x = copy.copy(x)
+            keys = list(x.keys())
+            key = keys[idx]
+            x[key] = fun(x[key])
+            return x
 
         return self.parent().propose_change(param, self, change_fun)
 
@@ -311,13 +290,10 @@ class FieldParameter(Parameter):
 
         self.parent().handle_change_fun(self, self, change_fun)
 
-    def propose_change(self, param, child, fun):
-        raise Exception
-
     def propose_self_change(self, data):
         logger.debug(f'Field ({self.name()}) proposed self-change ({data})')
 
-        def change_fun(x):
+        def change_fun(x, do_copy):
             return data
 
         return self.parent().propose_change(self, self, change_fun)

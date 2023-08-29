@@ -46,7 +46,8 @@ graph
 
 #### Example GUI
 
-To accompany the pydantic tree, an example is included in the `/scripts/tree/sample_gui.py`.
+An example is included in the `/scripts/tree/sample_gui.py`. It reflects the model defined in 
+`/scripts/tree/sample_model.py`
 
 
 ### GUI testing with pyqt-test

@@ -1,8 +1,11 @@
 import json
 import logging
+import os
+import pathlib
 
 import pyqtgraph as pg
 from PyQt5 import QtWidgets
+from PyQt5.QtCore import QDir
 from PyQt5.QtGui import QScreen
 from PyQt5.QtWidgets import QPlainTextEdit, QVBoxLayout, QWidget
 
@@ -32,8 +35,14 @@ class CallbackHandler(logging.Handler):
         self.cb(self.format(record))
 
 
-def make_window():
+def make_window(schema=False):
     logging.basicConfig(level=logging.DEBUG)
+
+    p = pathlib.Path.cwd()
+    root = p.parents[1]
+    print(root, str(root / 'src' / 'optiblocks' / 'resources'))
+
+    QDir.addSearchPath('images', str(root / 'src' / 'optiblocks' / 'resources'))
 
     win = QtWidgets.QWidget()
     win.setFixedSize(1280, 1000)
@@ -49,7 +58,7 @@ def make_window():
     def init_logger():
         root = logging.getLogger()
         logFormatter = logging.Formatter(
-                '[%(levelname)-5.5s][%(threadName)10.10s][%(asctime)s.%(msecs)03d '
+                '[%(levelname)-5.5s][%(threadName)10.10s][%(asctime)s '
                 '%(filename)10.10s %(lineno)4s] %(message)s',
                 datefmt='%H:%M:%S',
         )
@@ -77,16 +86,21 @@ def make_window():
     l1.addWidget(lw)
 
     tp = QtWidgets.QTextEdit()
-    tp.setFixedWidth(150)
+    if schema:
+        tp.setFixedWidth(150)
+    else:
+        tp.setFixedWidth(250)
     layout.addWidget(tp)
 
-    tp2 = QtWidgets.QTextEdit()
-    layout.addWidget(tp2)
-    tp2.setFixedWidth(150)
+    if schema:
+        tp2 = QtWidgets.QTextEdit()
+        layout.addWidget(tp2)
+        tp2.setFixedWidth(150)
 
     def update():
         tp.setText(json.dumps(model.dict(), indent=2, sort_keys=False))
-        tp2.setText(model.schema_json(indent=2))
+        if schema:
+            tp2.setText(model.schema_json(indent=2))
 
     def clear_style():
         stree.tree.setStyleSheet("")
@@ -120,6 +134,10 @@ def make_window():
     b = get_b("Debug style")
     b.clicked.connect(stree.tree.set_debug_style)
     l2.addWidget(b, 0, 3)
+
+    b = get_b("Line style")
+    b.clicked.connect(stree.tree.set_line_style)
+    l2.addWidget(b, 1, 1)
 
     tp3 = QtWidgets.QTextEdit()
     l2.addWidget(tp3, 0, 0)

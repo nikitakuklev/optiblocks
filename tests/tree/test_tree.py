@@ -6,7 +6,7 @@ from optiblocks.tree.parameters import FloatFieldParameter, FloatParameter, Inte
     ListFieldParameter, ModelGroupParameter
 from optiblocks.tree.tree import ModelContainer
 from sample_model import AC, make_dummy_model
-from tree_test_gui import make_window
+from sample_gui import make_window
 
 
 @pytest.fixture
