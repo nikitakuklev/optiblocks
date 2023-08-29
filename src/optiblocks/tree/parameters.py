@@ -170,69 +170,6 @@ class ModelGroupParameter(PydanticGroupParameter):
         return self
 
 
-class FieldParameter(Parameter):
-    """ Represents a pydantic field parameter """
-
-    def __init__(self, **opts):
-        super().__init__(**opts)
-        self.desc = opts.get('desc', "<no field description>")
-        self.typehint = opts.get('typehint', '')
-        self.field: FieldInfo = opts.get('field', None)
-
-    @abstractmethod
-    def makeTreeItem(self, depth):
-        pass
-
-    # def handle_change(self, param, change, data):
-    #     logger.debug(f'Parameter ({self.name()}) received change ({data}), fwd to'
-    #                  f' ({self.parent()})')
-    #
-    #     def change_fun(x):
-    #         return data
-    #
-    #     self.parent().handle_change_fun(param, self, change_fun)
-
-    def handle_self_change(self, data):
-        logger.debug(f'Field parameter ({self.name()}) received ({data}), fwd to'
-                     f' ({self.parent()})')
-
-        def change_fun(x):
-            return data
-
-        self.parent().handle_change_fun(self, self, change_fun)
-
-    def propose_change(self, param, child, fun):
-        raise Exception
-
-    def propose_self_change(self, data):
-        logger.debug(f'Field ({self.name()}) self-change {data}')
-
-        def change_fun(x):
-            return data
-
-        self.parent().propose_change(self, self, change_fun)
-
-    def _interpretValue(self, v):
-        typ = self.opts['type'] or 'str'
-        logger.debug(f'Interpreting {v} as {typ}')
-
-        def _missing_interp(v):
-            return v
-
-        interpreter = getattr(builtins, typ, _missing_interp)
-        return interpreter(v)
-
-    def find_change_handler(self):
-        return self.parent().find_change_handler()
-
-    def find_validator(self):
-        return self.parent().find_validator()
-
-    def __str__(self):
-        return (f'{self.__class__.__name__} with {self.desc=} {self.typehint=} '
-                f'{self.field=}')
-
-
 class RegularPydanticGroupParameter(PydanticGroupParameter):
     def find_change_handler(self):
         return self
@@ -318,6 +255,62 @@ class DictFieldParameter(PydanticGroupParameter):
             x[key] = data
 
         return change_fun
+
+
+###############
+
+class FieldParameter(Parameter):
+    """ Represents a pydantic field parameter that is a lead (will not contain children) """
+
+    def __init__(self, **opts):
+        super().__init__(**opts)
+        self.desc = opts.get('desc', "<no field description>")
+        self.typehint = opts.get('typehint', '')
+        self.field: FieldInfo = opts.get('field', None)
+
+    @abstractmethod
+    def makeTreeItem(self, depth):
+        pass
+
+    def handle_self_change(self, data):
+        logger.debug(f'Field parameter ({self.name()}) received ({data}), fwd to'
+                     f' ({self.parent()})')
+
+        def change_fun(x):
+            return data
+
+        self.parent().handle_change_fun(self, self, change_fun)
+
+    def propose_change(self, param, child, fun):
+        raise Exception
+
+    def propose_self_change(self, data):
+        logger.debug(f'Field ({self.name()}) self-change {data}')
+
+        def change_fun(x):
+            return data
+
+        self.parent().propose_change(self, self, change_fun)
+
+    def _interpretValue(self, v):
+        typ = self.opts['type'] or 'str'
+        logger.debug(f'Interpreting {v} as {typ}')
+
+        def _missing_interp(v):
+            return v
+
+        interpreter = getattr(builtins, typ, _missing_interp)
+        return interpreter(v)
+
+    def find_change_handler(self):
+        return self.parent().find_change_handler()
+
+    def find_validator(self):
+        return self.parent().find_validator()
+
+    def __str__(self):
+        return (f'{self.__class__.__name__} with {self.desc=} {self.typehint=} '
+                f'{self.field=}')
 
 
 class FloatFieldParameter(FieldParameter):
@@ -448,7 +441,7 @@ class PrimitiveParameter(Parameter):
 
         self.parent().handle_change(self, self, change_fun)
 
-    def propose_self_change(self, data, dry_run=False):
+    def propose_self_change(self, data):
         logger.debug(f'Primitive ({self.name()}) self-change {data}')
 
         def change_fun(x):
@@ -463,13 +456,12 @@ class PrimitiveParameter(Parameter):
     def propose_change(self, param, change, data):
         raise Exception
 
-
-
     def find_change_handler(self):
         return self.parent().find_change_handler()
 
     def find_validator(self):
         return self.parent().find_validator()
+
 
 class FloatParameter(PrimitiveParameter):
     t = 'float'
@@ -584,6 +576,8 @@ class IntHandler(FloatHandler):
                                      value=value, title=title,
                                      desc=desc, typehint=typehint)
 
+
+####################
 
 class PrimitiveHandler(ABC):
 

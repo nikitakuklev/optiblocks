@@ -5,14 +5,13 @@ from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QCursor
 from PyQt5.QtWidgets import QApplication, QDialog, QDialogButtonBox, QLabel, QPlainTextEdit, \
-    QSlider, QVBoxLayout, \
+    QSlider, QStyle, QVBoxLayout, \
     QWidget
 from pyqtgraph import SpinBox, functions as fn
 from pyqtgraph.parametertree import Parameter, ParameterItem
 from pyqtgraph.parametertree.parameterTypes import WidgetParameterItem
 from pyqtgraph.parametertree.parameterTypes.basetypes import EventProxy
 
-from apsopt.gui.utils import RM
 from .numberbox import NumberBox
 
 translate = QtCore.QCoreApplication.translate
@@ -114,7 +113,9 @@ class PydanticParameterItem(WidgetParameterItem):
         b.setAutoDefault(False)
         b.setFixedWidth(20)
         b.setFixedHeight(20)
-        b.setIcon(RM.icons['info'])
+        pixmapi = getattr(QStyle, 'SP_MessageBoxInformation')
+        icon = b.style().standardIcon(pixmapi)
+        b.setIcon(icon)
         b.clicked.connect(self.slot_info_button)
         desc = self.param.desc if hasattr(self.param, 'desc') else '<not available>'
         if desc is None:
